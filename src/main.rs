@@ -14,7 +14,7 @@ fn main() {
     
     let new_client_listener = client::start_server("4040");
     
-    let server_socket = UdpSocket::bind("127.0.0.1:9999").unwrap();
+    let server_socket = UdpSocket::bind("0.0.0.0:9999").unwrap();
     
     //server_socket.send_to(b"incio\n", "127.0.0.1:4444");
     

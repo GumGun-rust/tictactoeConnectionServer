@@ -11,7 +11,7 @@ use std::sync::mpsc::channel;
 use crate::listener;
 
 
-pub const SERVER_ADDRESS:&str = "127.0.0.1:50000";
+pub const SERVER_ADDRESS:&str = "10.0.44.250:50000";
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CommandType{
@@ -53,7 +53,7 @@ impl TryFrom<u8> for CommandType {
 
 pub fn start_server(port:&str) -> TcpListener {
     //4040
-    let mut address = "127.0.0.1:".to_owned();
+    let mut address = "0.0.0.0:".to_owned();
     address.push_str(port);
     TcpListener::bind(address).unwrap()
 }
