@@ -15,7 +15,7 @@ use std::sync::mpsc::channel;
 use crate::listener;
 
 
-pub const SERVER_ADDRESS:&str = "44.199.207.136:50000";
+pub const SERVER_ADDRESS:&str = "3.237.104.186:50000";
 pub const CONFIG_TABLE:&str = "configs";
 pub const PLAYER_TABLE:&str = "players";
 
@@ -98,8 +98,9 @@ fn get_user_name(connection:&mut TcpStream) -> Option<String>{
     Some(user)
 }
 
+
+
 pub async fn handle_connection(mut connection:TcpStream, socket:UdpSocket, mut hashmap_control:Sender<listener::MapAction>, mut ddb_client:ddb::Client) {
-    
     let user_name_r_error = get_user_name(&mut connection);
     
     let user_name = match user_name_r_error {
@@ -114,6 +115,7 @@ pub async fn handle_connection(mut connection:TcpStream, socket:UdpSocket, mut h
     
     connection.set_read_timeout(Some(Duration::new(0, 100))).expect("timeout shoud be putted");
     connection.set_nodelay(true).expect("set_nodelay call failed");
+    
     
     loop {
         //serv to client
@@ -140,7 +142,7 @@ pub async fn handle_connection(mut connection:TcpStream, socket:UdpSocket, mut h
                     &mut raw_client_buff
                 };
                 
-                let (command_type, test, number0, number1) = match parse_command(&client_buff) {
+                let (command_type, board_input, number0, number1) = match parse_command(&client_buff) {
                     Some(data) => data,
                     None => {
                         let socket_status = connection.write(b"incorrect command syntax second word should be a number\n");
@@ -162,7 +164,7 @@ pub async fn handle_connection(mut connection:TcpStream, socket:UdpSocket, mut h
                         }
                     }
                     CommandType::Connect => {
-                        let send_buff_size = build_connect_command(&mut command_buff, player_id, board_id);
+                        let send_buff_size = build_connect_command(&mut command_buff, player_id, board_input);
                         let comp_command_buff = &command_buff[..send_buff_size];
                         println!("[client] {:?}", comp_command_buff);
                         let socket_status = socket.send_to(comp_command_buff, SERVER_ADDRESS);
@@ -192,8 +194,8 @@ pub async fn handle_connection(mut connection:TcpStream, socket:UdpSocket, mut h
 
 fn response_to_string(buff:&[u8]) -> String {
     let mut holder = "\n\n\n\n\n".to_owned();
-    let player_id = u64::from_be_bytes(buff[3..11].try_into().expect("right value array"));
-    let board_id = u64::from_be_bytes(buff[11..19].try_into().expect("right value array"));
+    let player_id = u64::from_le_bytes(buff[3..11].try_into().expect("right value array"));
+    let board_id = u64::from_le_bytes(buff[11..19].try_into().expect("right value array"));
     let won = buff[28];
     let turn = buff[1];
     holder.push_str(&format!("you are player {}\n", player_id));
@@ -277,24 +279,24 @@ fn parse_command(string_buffer:&[u8]) -> Option<(CommandType, u64, u8, u8)> {
 fn build_create_command(send_buffer:&mut [u8], player_id:u64, board_id:u64) -> usize {
     send_buffer.fill(0);
     send_buffer[0] = u8::from(CommandType::Create); 
-    send_buffer[1..9].clone_from_slice(&board_id.to_be_bytes()); 
-    send_buffer[9..17].clone_from_slice(&player_id.to_be_bytes());
+    send_buffer[1..9].clone_from_slice(&board_id.to_le_bytes()); 
+    send_buffer[9..17].clone_from_slice(&player_id.to_le_bytes());
     8+8+1
 }
 
 fn build_connect_command(send_buffer:&mut [u8], player_id:u64, board_id:u64) -> usize {
     send_buffer.fill(0);
     send_buffer[0] = u8::from(CommandType::Connect); 
-    send_buffer[1..9].clone_from_slice(&board_id.to_be_bytes()); 
-    send_buffer[9..17].clone_from_slice(&player_id.to_be_bytes());
+    send_buffer[1..9].clone_from_slice(&board_id.to_le_bytes()); 
+    send_buffer[9..17].clone_from_slice(&player_id.to_le_bytes());
     8+8+1
 }
 
 fn build_move_command(send_buffer:&mut [u8], player_id:u64, board_id:u64, x_cord:u8, y_cord:u8) -> usize {
     send_buffer.fill(0);
     send_buffer[0] = u8::from(CommandType::Move); 
-    send_buffer[1..9].clone_from_slice(&board_id.to_be_bytes()); 
-    send_buffer[9..17].clone_from_slice(&player_id.to_be_bytes());
+    send_buffer[1..9].clone_from_slice(&board_id.to_le_bytes()); 
+    send_buffer[9..17].clone_from_slice(&player_id.to_le_bytes());
     send_buffer[17] = x_cord;
     send_buffer[18] = y_cord;
     8+8+1+2

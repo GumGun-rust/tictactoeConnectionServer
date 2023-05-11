@@ -50,7 +50,7 @@ pub fn listener_function(socket:UdpSocket, hashmap_control:Receiver<MapAction>) 
         
         
         
-        let key = u64::from_be_bytes(buffer[3..11].try_into().unwrap());
+        let key = u64::from_le_bytes(buffer[3..11].try_into().unwrap());
         println!("[listen] player key {} for message {:?}", key, buffer);
         
         match hash_map.get(&key) {

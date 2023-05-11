@@ -15,7 +15,8 @@ mod listener;
 mod test;
 
 
-fn main() {
+#[tokio::main]
+async fn main() {
     
     let new_client_listener = client::start_server("4040");
     
@@ -35,8 +36,10 @@ fn main() {
     
 
     
+    /*
     let mut rt = Runtime::new().unwrap();
     rt.block_on(async move {
+    */
         println!("hello from the async block");
         let config = aws_config::load_from_env().await;
         let ddb_client = ddb::Client::new(&config);
@@ -55,13 +58,15 @@ fn main() {
                     let ddb_client_clone = ddb_client.clone();
                     
                     
-                    tokio::spawn(async { client::handle_connection(client_socket, server_socket_clone, hashmap_control_clone, ddb_client_clone).await  });
+                    //tokio::spawn(async move { client::handle_connection(client_socket, server_socket_clone, hashmap_control_clone, ddb_client_clone).await  });
                     
-                        /*
                     let _ = thread::spawn(move || {
-                        client::handle_connection(client_socket, server_socket, hashmap_control_clone);
+                        let mut rt = Runtime::new().unwrap();
+                        rt.block_on(async move {
+                            client::handle_connection(client_socket, server_socket_clone, hashmap_control_clone, ddb_client_clone).await
+                        });
+                        //client::handle_connection(client_socket, server_socket, hashmap_control_clone);
                     });
-                        */
                     
                 },
                 Err(e) => {
@@ -71,7 +76,7 @@ fn main() {
             
         }
         
-    });
+    //});
     /*
     thread::sleep(ten_millis);
     println!("Hello, world!");
