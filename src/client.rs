@@ -5,13 +5,17 @@ use std::io::Read;
 use std::net::UdpSocket;
 use std::sync::mpsc::{Sender,Receiver};
 
+use aws_sdk_dynamodb as ddb;
+
 
 use std::sync::mpsc::channel;
 
 use crate::listener;
 
 
-pub const SERVER_ADDRESS:&str = "10.0.44.250:50000";
+pub const SERVER_ADDRESS:&str = "44.199.207.136:50000";
+pub const CONFIG_TABLE:&str = "configs";
+pub const PLAYER_TABLE:&str = "players";
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CommandType{
@@ -59,27 +63,22 @@ pub fn start_server(port:&str) -> TcpListener {
 }
 
 
-pub fn handle_connection(mut connection:TcpStream, socket:UdpSocket, mut hashmap_control:Sender<listener::MapAction>) {
+pub async fn handle_connection(mut connection:TcpStream, socket:UdpSocket, mut hashmap_control:Sender<listener::MapAction>, mut ddb_controler:ddb::Client) {
+    
+    
+    let (player_id, board_id, receiver) = handle_validation(&mut hashmap_control, &mut connection, &mut ddb_controler).await;
+    connection.write(format!("your player Id is {}\n", player_id).as_bytes());
     
     connection.set_read_timeout(Some(Duration::new(0, 100))).expect("timeout shoud be putted");
     connection.set_nodelay(true).expect("set_nodelay call failed");
-    
-    let (player_id, board_id, receiver) = handle_validation(&mut hashmap_control);
-    connection.write(format!("your player Id is {}\n", player_id).as_bytes());
     
     loop {
         //serv to client
         let serv_client_status = receiver.recv_timeout(Duration::new(0, 100));
         match serv_client_status {
             Ok(data) => {
-                /*
-                println!("[client]\n\treceive data len {:?}", data.len());
-                println!("[client]\n\tdata {:?}", data);
-                */
                 let prettify_response = response_to_string(&data);
-                //println!("{}", prettify_response);
                 let _ = connection.write(prettify_response.as_bytes());
-                //panic!("post sending anything");
             },
             Err(err) => {
                 //println!("{:?}", err);
@@ -141,16 +140,11 @@ pub fn handle_connection(mut connection:TcpStream, socket:UdpSocket, mut hashmap
                     },
                 }
             },
-            Err(_err) => {
-                //println!("{:?}", _err);
-                //println!("{:?}", err);
-            }
+            Err(_err) => { /*println!("{:?}", _err);*/ }
         }
         
     }
-    
     handle_client_close(player_id, &mut hashmap_control)
-   
 }
 
 fn response_to_string(buff:&[u8]) -> String {
@@ -264,13 +258,77 @@ fn build_move_command(send_buffer:&mut [u8], player_id:u64, board_id:u64, x_cord
 }
 
 
-fn handle_validation(hashmap_control:&mut Sender<listener::MapAction>) -> (u64, u64, Receiver<[u8; 64]>) {
-    
+async fn insert_player() -> u64 {
+    panic!();
+}
+
+async fn get_next_player(ddb_client:&mut ddb::Client) -> u64 {
+    use aws_sdk_dynamodb::types::AttributeValue::*;
+    let command_holder = ddb_client.get_item();
+    let command_holder = command_holder.table_name(CONFIG_TABLE);
+    let command_holder = command_holder.key("config", S("player".to_owned()));
+    let result_holder = command_holder.send().await;
+    //println!("client {:#?}", hola);
+    result_holder.unwrap().item().unwrap().get("number").unwrap().as_n().unwrap().parse::<u64>().unwrap()+1
+}
+
+async fn update_player(ddb_client:&mut ddb::Client, number:u64) {
+    use aws_sdk_dynamodb::types::AttributeValue::*;
+    let command_holder = ddb_client.put_item();
+    let command_holder = command_holder.table_name(CONFIG_TABLE);
+    let command_holder = command_holder.item("config", S("player".to_owned()));
+    let _ = command_holder.item("number", N(number.to_string())).send().await.unwrap();
+}
+
+async fn get_next_board(ddb_client:&mut ddb::Client) -> u64 {
+    use aws_sdk_dynamodb::types::AttributeValue::*;
+    let command_holder = ddb_client.get_item();
+    let command_holder = command_holder.table_name(CONFIG_TABLE);
+    let command_holder = command_holder.key("config", S("board".to_owned()));
+    let result_holder = command_holder.send().await;
+    //println!("client {:#?}", hola);
+    result_holder.unwrap().item().unwrap().get("number").unwrap().as_n().unwrap().parse::<u64>().unwrap()+1
+}
+
+async fn update_board(ddb_client:&mut ddb::Client, number:u64) {
+    use aws_sdk_dynamodb::types::AttributeValue::*;
+    let command_holder = ddb_client.put_item();
+    let command_holder = command_holder.table_name(CONFIG_TABLE);
+    let command_holder = command_holder.item("config", S("board".to_owned()));
+    let _ = command_holder.item("number", N(number.to_string())).send().await.unwrap();
+}
+
+async fn handle_validation(hashmap_control:&mut Sender<listener::MapAction>, connection:&mut TcpStream, ddb_controler:&mut ddb::Client) -> (u64, u64, Receiver<[u8; 64]>) {
     //aws functions to validate
+    
+    let next_board = get_next_board(ddb_controler).await;
+    println!("next board {}", next_board);
+    update_board(ddb_controler, next_board).await;
+    let next_player = get_next_player(ddb_controler).await;
+    println!("next player {}", next_player);
+    update_player(ddb_controler, next_player).await;
+    
     let mut string = String::new();
     let _ = std::io::stdin().read_line(&mut string);
     string.pop();
     let player_id = string.parse().unwrap();
+    
+    let _ = connection.write(b"0: for login\n1: for sign up\n");
+    
+    let mut buffer:[u8;1] = [0u8; 1];
+    connection.read(&mut buffer);
+    match buffer[0] {
+        0 => {
+            println!("log in");
+        },
+        1 => {
+            println!("sign up");
+        },
+        _ => {
+            println!("sign up");
+            panic!("wrong answer");
+        }
+    }
     
     let (sender, receiver):(Sender<[u8; 64]>, Receiver<[u8; 64]>) = channel();
     
