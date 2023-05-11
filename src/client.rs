@@ -15,9 +15,10 @@ use std::sync::mpsc::channel;
 use crate::listener;
 
 
-pub const SERVER_ADDRESS:&str = "3.237.104.186:50000";
+pub const SERVER_ADDRESS:&str = "3.239.148.169:50000";
 pub const CONFIG_TABLE:&str = "configs";
 pub const PLAYER_TABLE:&str = "players";
+pub const PLAYER_ID_TABLE:&str = "playersId";
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CommandType{
@@ -117,6 +118,7 @@ pub async fn handle_connection(mut connection:TcpStream, socket:UdpSocket, mut h
     connection.set_nodelay(true).expect("set_nodelay call failed");
     
     
+    let mut board=0;
     loop {
         //serv to client
         let serv_client_status = receiver.recv_timeout(Duration::new(0, 100));
@@ -157,6 +159,7 @@ pub async fn handle_connection(mut connection:TcpStream, socket:UdpSocket, mut h
                         let send_buff_size = build_create_command(&mut command_buff, player_id, board_id);
                         let comp_command_buff = &command_buff[..send_buff_size];
                         println!("[client] {:?}", comp_command_buff);
+                        board = board_id;
                         let socket_status = socket.send_to(comp_command_buff, SERVER_ADDRESS);
                         if let Err(err) = socket_status {
                             println!("[client] {:?}", err);
@@ -165,6 +168,7 @@ pub async fn handle_connection(mut connection:TcpStream, socket:UdpSocket, mut h
                     }
                     CommandType::Connect => {
                         let send_buff_size = build_connect_command(&mut command_buff, player_id, board_input);
+                        board = board_input;
                         let comp_command_buff = &command_buff[..send_buff_size];
                         println!("[client] {:?}", comp_command_buff);
                         let socket_status = socket.send_to(comp_command_buff, SERVER_ADDRESS);
@@ -174,7 +178,7 @@ pub async fn handle_connection(mut connection:TcpStream, socket:UdpSocket, mut h
                         }
                     },
                     CommandType::Move => {
-                        let send_buff_size = build_move_command(&mut command_buff, player_id, board_id, number0.try_into().unwrap(), number1.try_into().unwrap());
+                        let send_buff_size = build_move_command(&mut command_buff, player_id, board, number0.try_into().unwrap(), number1.try_into().unwrap());
                         let comp_command_buff = &command_buff[..send_buff_size];
                         println!("[client] {:?}", comp_command_buff);
                         let socket_status = socket.send_to(comp_command_buff, SERVER_ADDRESS);
@@ -315,11 +319,18 @@ async fn insert_new_player(ddb_client:&mut ddb::Client, user_name:String, player
     use ddb::types::AttributeValue::*;
     let command_holder = ddb_client.put_item();
     let command_holder = command_holder.table_name(PLAYER_TABLE);
-    let command_holder = command_holder.item("nickname", S(user_name));
+    let command_holder = command_holder.item("nickname", S(user_name.clone()));
     let command_holder = command_holder.item("playerId", N(player_id.to_string()));
     let command_holder = command_holder.item("won", N(0.to_string()));
     let command_holder = command_holder.item("lost", N(0.to_string()));
     let print = command_holder.send().await.unwrap();
+    let command_holder = ddb_client.put_item();
+    let command_holder = command_holder.table_name(PLAYER_ID_TABLE);
+    let command_holder = command_holder.item("playerId", N(player_id.to_string()));
+    let command_holder = command_holder.item("nickname", S(user_name.clone()));
+    let print = command_holder.send().await.unwrap();
+    
+    let command_holder = ddb_client.put_item();
     println!("{:?}", print);
 }
 
